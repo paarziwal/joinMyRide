@@ -1,24 +1,26 @@
 package com.prajwal.joinmyride1.entity;
 
+import org.springframework.data.redis.core.RedisHash;
+
 import javax.persistence.*;
+import java.io.Serializable;
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "BookingRequest")
-public class BookingRequest {
+@RedisHash("booking")
+public class BookingRequest implements Serializable {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+//    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "id")
     private int bookingRequestId;
 
-    @ManyToOne
-    @JoinColumn(name = "ride_id", nullable = false)
-    private Ride ride;
+    @Column(name="ride_id")
+    private int rideId;
 
-    @ManyToOne
-    @JoinColumn(name = "passenger_id", nullable = false)
-    private Passenger passenger;
+    @Column(name="passenger_id")
+    private int passengerId;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
@@ -35,9 +37,10 @@ public class BookingRequest {
     public BookingRequest() {
     }
 
-    public BookingRequest(Ride ride, Passenger passenger, BookingStatus status, LocalDateTime requestedAt, LocalDateTime updatedAt) {
-        this.ride = ride;
-        this.passenger = passenger;
+    public BookingRequest(int bookingRequestId,int rideId, int passengerId, BookingStatus status, LocalDateTime requestedAt, LocalDateTime updatedAt) {
+        this.bookingRequestId = bookingRequestId;
+        this.rideId = rideId;
+        this.passengerId = passengerId;
         this.status = status;
         this.requestedAt = requestedAt;
         this.updatedAt = updatedAt;
@@ -51,20 +54,20 @@ public class BookingRequest {
         this.bookingRequestId = bookingRequestId;
     }
 
-    public Ride getRide() {
-        return ride;
+    public int getRideId() {
+        return rideId;
     }
 
-    public void setRide(Ride ride) {
-        this.ride = ride;
+    public void setRideId(int rideId) {
+        this.rideId = rideId;
     }
 
-    public Passenger getPassenger() {
-        return passenger;
+    public int getPassengerId() {
+        return passengerId;
     }
 
-    public void setPassenger(Passenger passenger) {
-        this.passenger = passenger;
+    public void setPassengerId(int passengerId) {
+        this.passengerId = passengerId;
     }
 
     public BookingStatus getStatus() {

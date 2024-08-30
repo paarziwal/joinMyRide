@@ -2,7 +2,6 @@
 
 package com.prajwal.joinmyride1.service;
 
-import com.prajwal.joinmyride1.Repository.BookingRequestRepository;
 import com.prajwal.joinmyride1.Repository.PassengerRepository;
 import com.prajwal.joinmyride1.Repository.RideRepository;
 import com.prajwal.joinmyride1.entity.BookingRequest;
@@ -13,13 +12,12 @@ import java.time.LocalDateTime;
 import java.util.Optional;
 import javax.management.InstanceNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 @Service
 public class BookingRequestService {
-    @Autowired
-    private BookingRequestRepository bookingRequestRepository;
     @Autowired
     private RideService rideService;
     @Autowired
@@ -27,14 +25,22 @@ public class BookingRequestService {
     @Autowired
     private PassengerRepository passengerRepository;
 
+    @Autowired
+    private Increment increment;
+
+    @Autowired
+    RedisTemplate redisTemplate;
+
+    public static final String HASH_KEY = "booking";
+
     public BookingRequestService() {
     }
 
     @PreAuthorize("hasRole('PASSENGER')")
     public BookingRequest.BookingStatus getBookingStatus(int bookingRequestId) throws InstanceNotFoundException {
-        Optional<BookingRequest> booking = this.bookingRequestRepository.findById(bookingRequestId);
-        if (booking.isPresent()) {
-            return ((BookingRequest)booking.get()).getStatus();
+        BookingRequest booking = (BookingRequest) redisTemplate.opsForHash().get(HASH_KEY,String.valueOf(bookingRequestId));
+        if (booking!=null) {
+            return booking.getStatus();
         } else {
             throw new InstanceNotFoundException("id is incorrect");
         }
@@ -45,15 +51,18 @@ public class BookingRequestService {
         Optional<Ride> rideOpt = this.rideRepository.findById(rideId);
         Optional<Passenger> passengerOpt = this.passengerRepository.findById(passengerId);
         if (rideOpt.isPresent() && passengerOpt.isPresent()) {
-            Ride ride = (Ride)rideOpt.get();
-            Passenger passenger = (Passenger)passengerOpt.get();
+            Ride ride = (Ride) rideOpt.get();
+            Passenger passenger = (Passenger) passengerOpt.get();
             BookingRequest bookingRequest = new BookingRequest();
-            bookingRequest.setRide(ride);
-            bookingRequest.setPassenger(passenger);
+            bookingRequest.setBookingRequestId(increment.getA());
+            increment.setA(increment.getA());
+            bookingRequest.setRideId(rideId);
+            bookingRequest.setPassengerId(passengerId);
             bookingRequest.setStatus(BookingStatus.PENDING);
             bookingRequest.setRequestedAt(LocalDateTime.now());
             bookingRequest.setUpdatedAt(LocalDateTime.now());
-            return (BookingRequest)this.bookingRequestRepository.save(bookingRequest);
+            redisTemplate.opsForHash().put(HASH_KEY, String.valueOf(bookingRequest.getBookingRequestId()), bookingRequest);
+            return bookingRequest;
         } else {
             throw new RuntimeException("Ride or Passenger not found");
         }
@@ -61,13 +70,13 @@ public class BookingRequestService {
 
     @PreAuthorize("hasRole('DRIVER')")
     public BookingRequest acceptBookingRequest(int bookingRequestId) {
-        Optional<BookingRequest> bookingRequestOpt = this.bookingRequestRepository.findById(bookingRequestId);
-        if (bookingRequestOpt.isPresent()) {
-            BookingRequest bookingRequest = (BookingRequest)bookingRequestOpt.get();
+        BookingRequest bookingRequestOpt = (BookingRequest) redisTemplate.opsForHash().get(HASH_KEY,String.valueOf(bookingRequestId));
+        if (bookingRequestOpt != null) {
+            BookingRequest bookingRequest = bookingRequestOpt;
             bookingRequest.setStatus(BookingStatus.ACCEPTED);
             bookingRequest.setUpdatedAt(LocalDateTime.now());
-            this.bookingRequestRepository.save(bookingRequest);
-            this.rideService.addPassengerToRide(bookingRequest.getRide().getRideId(), bookingRequest.getPassenger().getPassengerId());
+            redisTemplate.opsForHash().put(HASH_KEY, String.valueOf(bookingRequest.getBookingRequestId()), bookingRequest);
+            this.rideService.addPassengerToRide(bookingRequest.getRideId(), bookingRequest.getPassengerId());
             return bookingRequest;
         } else {
             throw new RuntimeException("Booking request not found");
@@ -76,12 +85,13 @@ public class BookingRequestService {
 
     @PreAuthorize("hasRole('DRIVER')")
     public BookingRequest rejectBookingRequest(int bookingRequestId) {
-        Optional<BookingRequest> bookingRequestOpt = this.bookingRequestRepository.findById(bookingRequestId);
-        if (bookingRequestOpt.isPresent()) {
-            BookingRequest bookingRequest = (BookingRequest)bookingRequestOpt.get();
+        BookingRequest bookingRequestOpt = (BookingRequest) redisTemplate.opsForHash().get(HASH_KEY,String.valueOf(bookingRequestId));
+        if (bookingRequestOpt != null) {
+            BookingRequest bookingRequest = bookingRequestOpt;
             bookingRequest.setStatus(BookingStatus.REJECTED);
             bookingRequest.setUpdatedAt(LocalDateTime.now());
-            return (BookingRequest)this.bookingRequestRepository.save(bookingRequest);
+            redisTemplate.opsForHash().put(HASH_KEY, String.valueOf(bookingRequest.getBookingRequestId()), bookingRequest);
+            return bookingRequest;
         } else {
             throw new RuntimeException("Booking request not found");
         }
@@ -89,7 +99,7 @@ public class BookingRequestService {
 
     @PreAuthorize("hasRole('PASSENGER')")
     public String deleteBookingRequest(int bookingRequestId) {
-        this.bookingRequestRepository.deleteById(bookingRequestId);
+        redisTemplate.opsForHash().delete(HASH_KEY,String.valueOf(bookingRequestId));
         return bookingRequestId + " deleted";
     }
 }
